@@ -59,11 +59,11 @@ sologsb-1120/
         ├── App.vue
         ├── router/index.ts
         ├── types/{clock,part,step,test}.ts
-        ├── stores/{clock,part,step}Store.ts
-        ├── components/common/{StepSequence,RateChart,ClockCard,StateBadge}.vue
+        ├── stores/{clock,part,step,testImport}Store.ts
+        ├── components/common/{StepSequence,RateChart,ClockCard,StateBadge,ReconcileDialog}.vue
         ├── hooks/{useClockSearch,useRepairProgress}.ts
         ├── pages/{ClockList,ClockDetail,StepForm,PartList,TestView}.vue
-        └── utils/{db,timeCalc,id}.ts
+        └── utils/{db,timeCalc,reconcile,id}.ts
 ```
 
 ## 页面与路由
@@ -80,11 +80,12 @@ sologsb-1120/
 
 ## 数据存储说明
 
-- 数据库名 `gbclockrepair`，当前结构版本 **v2**（`localStorage['gbclockrepair:db-version']` 记录）。
-- 四张表：`clocks`（钟表）、`parts`（机芯零件）、`steps`（维修工序）、`tests`（走时测试）。
+- 数据库名 `gbclockrepair`，当前结构版本 **v3**（`localStorage['gbclockrepair:db-version']` 记录）。
+- 五张表：`clocks`（钟表）、`parts`（机芯零件）、`steps`（维修工序）、`tests`（走时测试）、`testImports`（待对账的双源原始结果）。
 - v1 → v2 迁移：补齐老记录的 `state`、`partIds`、`torque`、`positions` 字段并新增索引。
+- v2 → v3 迁移：新增 `testImports` 表；`tests` 增加 `status` / `source` / `mergedFrom` 字段与索引。旧测试无 `status`，继续按原结论展示，不做数据迁移。
 - 容器无状态、不挂载命名卷；清空站点数据即回到初始示范数据。
-- 首次打开灌入 2 台示范钟表、3 项零件、3 道工序与 1 次走时测试。
+- 首次打开灌入 2 台示范钟表、3 项零件、3 道工序、1 次走时测试，以及 1 组待对账的双源导入（含缺方位、日差超差、偏振超差各一处）。
 
 ## 功能要点
 
@@ -93,3 +94,7 @@ sologsb-1120/
 - **工序完成 / 回退**：完成后写 `finishedAt`，回退后计入待办与回退计数。
 - **双轴走时图**：`<RateChart>` 左轴日差 s/d、右轴摆幅 °，标注四方位读数与均值。
 - **走时单导出**：按方位均值生成文本，可复制或下载 txt。
+- **双源对账**：测试页可分别粘贴校表仪导出与纸单抄录的 JSON，按藏品号 + 测试时间（同分钟）配对。
+  - 一方缺方位、同一方位日差相差超过 1 s/d、偏振相差超过 0.5 ms 时，两值并列保留，由修复师点选采用；一致读数默认取校表仪。
+  - 确认采用后更新/新建正式记录并重算多方位均值与结论，动力储备与测试时间也可择源；详情页历史只显示已确认结果。
+  - 导入任一行不合规则整批失败、不写库，可修改后重试；按批次指纹与行内容指纹去重，重试同批不重复新增。旧测试（无 `status` 字段）继续按原结论展示。

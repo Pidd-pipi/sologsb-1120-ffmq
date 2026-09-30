@@ -2,11 +2,11 @@ import Dexie, { type Table } from 'dexie';
 import type { Clock } from '../types/clock';
 import type { MovementPart } from '../types/part';
 import type { RepairStep } from '../types/step';
-import type { TimekeepingTest } from '../types/test';
-import { newId } from './id';
+import type { RawTestImport, TimekeepingTest } from '../types/test';
+import { hashContent, minuteKeyOf, newId } from './id';
 
 export const DB_NAME = 'gbclockrepair';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const LS_VERSION_KEY = 'gbclockrepair:db-version';
 
 class ClockRepairDB extends Dexie {
@@ -14,6 +14,7 @@ class ClockRepairDB extends Dexie {
   parts!: Table<MovementPart, string>;
   steps!: Table<RepairStep, string>;
   tests!: Table<TimekeepingTest, string>;
+  testImports!: Table<RawTestImport, string>;
 
   constructor() {
     super(DB_NAME);
@@ -48,6 +49,15 @@ class ClockRepairDB extends Dexie {
             if (row.positions === undefined) row.positions = [];
           });
       });
+    // v3：双源（校表仪/纸单）走时数据导入与对账
+    // 老 tests 记录无 status 字段，按原结论继续展示；新增表无需数据迁移
+    this.version(3).stores({
+      clocks: 'id, clockNo, kind, caliber, conditionGrade, createdAt',
+      parts: 'id, clockId, name, wearState, decision, sourceLot',
+      steps: 'id, clockId, seq, stepType, state, startedAt',
+      tests: 'id, clockId, testedAt, conclusion, status, source',
+      testImports: 'id, clockId, minuteKey, source, batchHash, consumed',
+    });
   }
 }
 
@@ -231,10 +241,65 @@ export async function ensureSeedData(): Promise<void> {
     },
   ];
 
-  await db.transaction('rw', db.clocks, db.parts, db.steps, db.tests, async () => {
+  // 一对待对账的双源记录：同一轮测试，校表仪与纸单各记一份
+  // 面上两值一致；面下纸单缺方位；12上日差相差 2.1 s/d 超差；6上偏振相差 0.6 ms 超差
+  const testedMachineAt = now - day - 32 * 60000;
+  const testedPaperAt = testedMachineAt + 40 * 1000; // 纸单手抄时间有 40 秒出入，同分钟可配对
+  const mkImport = (
+    source: 'machine' | 'paper',
+    testedAt: number,
+    positions: RawTestImport['positions'],
+    powerReserve: number,
+    conclusion: string,
+  ): RawTestImport => {
+    const row = {
+      clockId: clockA,
+      minuteKey: minuteKeyOf(testedAt),
+      testedAt,
+      source,
+      positions,
+      powerReserve,
+      conclusion,
+      importedAt: now,
+    };
+    return {
+      id: newId('imp'),
+      ...row,
+      batchHash: 'seed-dual-source',
+      rowHash: hashContent(JSON.stringify(row)),
+    };
+  };
+  const rawImports: RawTestImport[] = [
+    mkImport(
+      'machine',
+      testedMachineAt,
+      [
+        { position: '面上', rate: 4.1, amplitude: 271, beatError: 0.3 },
+        { position: '面下', rate: 6.4, amplitude: 260, beatError: 0.4 },
+        { position: '12上', rate: 3.8, amplitude: 266, beatError: 0.3 },
+        { position: '6上', rate: 5.5, amplitude: 262, beatError: 0.4 },
+      ],
+      44,
+      '',
+    ),
+    mkImport(
+      'paper',
+      testedPaperAt,
+      [
+        { position: '面上', rate: 4.1, amplitude: 271, beatError: 0.3 },
+        { position: '12上', rate: 5.9, amplitude: 264, beatError: 0.3 },
+        { position: '6上', rate: 5.5, amplitude: 262, beatError: 1.0 },
+      ],
+      42,
+      '可用（需再调）',
+    ),
+  ];
+
+  await db.transaction('rw', db.clocks, db.parts, db.steps, db.tests, db.testImports, async () => {
     await db.clocks.bulkPut(clocks);
     await db.parts.bulkPut(parts);
     await db.steps.bulkPut(steps);
     await db.tests.bulkPut(tests);
+    await db.testImports.bulkPut(rawImports);
   });
 }

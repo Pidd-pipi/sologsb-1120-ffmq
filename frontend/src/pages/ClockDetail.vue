@@ -10,7 +10,7 @@ import StepSequence from '../components/common/StepSequence.vue';
 import RateChart from '../components/common/RateChart.vue';
 import StateBadge from '../components/common/StateBadge.vue';
 import { CONDITION_GRADES, type ConditionGrade } from '../types/clock';
-import { judgeTest } from '../types/test';
+import { TEST_SOURCE_LABELS, judgeTest } from '../types/test';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,7 +22,12 @@ const clockId = computed(() => String(route.params.id ?? ''));
 const clock = computed(() => clockStore.byId(clockId.value));
 const { progress, steps, done, total, percent, current, gaps } = useRepairProgress(clockId);
 const parts = computed(() => partStore.byClock(clockId.value));
-const tests = computed(() => stepStore.testsByClock(clockId.value));
+// 详情页历史只显示已确认结果；旧记录无 status 字段，继续按原结论展示
+const tests = computed(() =>
+  stepStore
+    .testsByClock(clockId.value)
+    .filter((t) => t.status === undefined || t.status === 'confirmed'),
+);
 const activeTab = ref('steps');
 
 async function finish(id: string) {
@@ -137,11 +142,14 @@ onMounted(async () => {
                 <div class="card-head">
                   <strong>{{ new Date(t.testedAt).toLocaleString('zh-CN') }}</strong>
                   <el-tag size="small" type="success">{{ t.conclusion || judgeTest(t.rate, t.beatError, t.amplitude) }}</el-tag>
+                  <el-tag size="small" type="info" effect="plain">
+                    {{ t.source ? TEST_SOURCE_LABELS[t.source] : '历史记录' }}
+                  </el-tag>
                   <span class="muted">日差 {{ t.rate }} s/d · 摆幅 {{ t.amplitude }}° · 偏振 {{ t.beatError }} ms</span>
                 </div>
                 <RateChart :readings="t.positions" />
               </div>
-              <el-empty v-if="tests.length === 0" description="暂无走时测试记录" :image-size="60" />
+              <el-empty v-if="tests.length === 0" description="暂无已确认的走时测试记录" :image-size="60" />
             </el-tab-pane>
           </el-tabs>
         </el-card>
