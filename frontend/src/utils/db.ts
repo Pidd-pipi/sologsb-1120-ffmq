@@ -216,6 +216,7 @@ export async function ensureSeedData(): Promise<void> {
     {
       id: newId('tst'),
       clockId: clockA,
+      clockNo: 'CLK-1932-004',
       testedAt: now - 2 * day,
       amplitude: 262,
       beatError: 0.4,
@@ -228,6 +229,8 @@ export async function ensureSeedData(): Promise<void> {
       ],
       powerReserve: 46,
       conclusion: '合格',
+      source: 'manual',
+      confirmed: true,
     },
   ];
 

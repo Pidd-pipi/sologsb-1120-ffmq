@@ -22,7 +22,8 @@ const clockId = computed(() => String(route.params.id ?? ''));
 const clock = computed(() => clockStore.byId(clockId.value));
 const { progress, steps, done, total, percent, current, gaps } = useRepairProgress(clockId);
 const parts = computed(() => partStore.byClock(clockId.value));
-const tests = computed(() => stepStore.testsByClock(clockId.value));
+// 详情页历史只显示已确认归档的走时结果
+const tests = computed(() => stepStore.confirmedByClock(clockId.value));
 const activeTab = ref('steps');
 
 async function finish(id: string) {
